@@ -1,0 +1,209 @@
+#include <SoftwareSerial.h>
+#include <Servo.h>
+
+SoftwareSerial SerialBT(10, 11); // RX, TX
+Servo servoA;
+
+const int ledEsquerda = 4;  // LED da seta da esquerda (pino 4)
+const int ledDireita = 6;   // LED da seta da direita (pino 6)
+
+bool piscandoEsquerda = false; // Controle da seta esquerda
+bool piscandoDireita = false;  // Controle da seta direita
+
+unsigned long ultimaPiscadaEsq = 0; // Tempo da última piscada (esquerda)
+unsigned long ultimaPiscadaDir = 0; // Tempo da última piscada (direita)
+
+const int intervaloPisc = 500; // Intervalo de piscagem (ms)
+
+int PIN_SERVO_A = 9;
+int PIN_IN1 = 3;
+int PIN_IN2 = 5;
+int PIN_FREIO = 7;
+int PIN_FAROL = 12;
+int PIN_ECHO = A0;
+int PIN_TRIG = A1;
+
+String numericPart = "";
+char codeReceived;
+
+void setup() {
+    Serial.begin(115200);
+    SerialBT.begin(9600);
+
+    pinMode(PIN_IN1, OUTPUT);
+    pinMode(PIN_IN2, OUTPUT);
+    pinMode(PIN_FAROL, OUTPUT);
+    pinMode(ledEsquerda, OUTPUT);
+    pinMode(ledDireita, OUTPUT);
+    pinMode(PIN_TRIG, OUTPUT);
+    pinMode(PIN_ECHO, INPUT);
+    pinMode(PIN_FREIO, OUTPUT);
+
+    servoA.attach(PIN_SERVO_A);
+}
+
+void loop() {
+    // Comunicação Bluetooth
+    if (Serial.available()) {
+        SerialBT.write(Serial.read());
+    }
+
+    while (SerialBT.available() > 0) {
+        String line = SerialBT.readStringUntil('\n');
+        Serial.println("code received: " + line);
+        numericPart = "";
+        for (int i = 0; i < line.length(); i++) {
+            int character = line[i];
+            if (isDigit(character)) {
+                numericPart += (char) character;
+            } else if (character != '\n') {
+                codeReceived = character;
+            } else {
+                break;
+            }
+        }
+    }
+
+    // Executa a ação correspondente ao comando recebido
+    switch (codeReceived) {
+        case 'F': irparaFrente(); break;
+        case 'Q': esquerdaFrente(); break;
+        case 'L': virarEsquerda(); break;
+        case 'B': voltarAtraz(); break;
+        case 'Z': esquerdaAtraz(); break;
+        case 'C': direitaAtraz(); break;
+        case 'R': virarDireta(); break;
+        case 'E': direitaFrente(); break;
+        case 'S': parar(); break;
+        case 'M': ligarFarol(); break;
+        case 'm': desligarFarol(); break;
+//        case 'N': ligarLed2(); break;
+//        case 'n': desligarLed2(); break;
+        case 'X':
+            piscandoEsquerda = !piscandoEsquerda; // Liga/desliga seta esquerda
+            if (!piscandoEsquerda) digitalWrite(ledEsquerda, LOW); // Apaga quando desliga
+            break;
+        case 'Y':
+            piscandoDireita = !piscandoDireita; // Liga/desliga seta direita
+            if (!piscandoDireita) digitalWrite(ledDireita, LOW); // Apaga quando desliga
+            break;
+        case 'J':
+            if (numericPart != "") {
+                rotateServoA(numericPart.toInt());
+            }
+            break;
+    }
+
+    // Controla a piscagem da seta esquerda
+    if (piscandoEsquerda) {
+        unsigned long currentTime = millis();
+        if (currentTime - ultimaPiscadaEsq >= intervaloPisc) {
+            ultimaPiscadaEsq = currentTime;
+            digitalWrite(ledEsquerda, !digitalRead(ledEsquerda)); // Alterna estado
+        }
+    }
+
+    // Controla a piscagem da seta direita
+    if (piscandoDireita) {
+        unsigned long currentTime = millis();
+        if (currentTime - ultimaPiscadaDir >= intervaloPisc) {
+            ultimaPiscadaDir = currentTime;
+            digitalWrite(ledDireita, !digitalRead(ledDireita)); // Alterna estado
+        }
+    }
+
+    // Envia a distância medida pelo sensor ultrassônico
+    SerialBT.print("D");
+    SerialBT.println(measureDistance());
+
+    delay(10);
+}
+
+// Função para medir distância com sensor ultrassônico
+long measureDistance() {
+    digitalWrite(PIN_TRIG, LOW);
+    delayMicroseconds(5);
+    digitalWrite(PIN_TRIG, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(PIN_TRIG, LOW);
+
+    long duration = pulseIn(PIN_ECHO, HIGH);
+    return microsecondsToCentimeters(duration);
+}
+
+long microsecondsToCentimeters(long microseconds) {
+    return microseconds / 29 / 2;
+}
+
+void ligarFarol() {
+  digitalWrite(PIN_FAROL, HIGH);
+}
+
+void desligarFarol() {
+  digitalWrite(PIN_FAROL, LOW);
+}
+
+void rotateServoA(int grados) {
+  servoA.write(grados);
+}
+
+void irparaFrente() {
+  rotateServoA(60);
+  digitalWrite(PIN_IN1, HIGH);
+  digitalWrite(PIN_IN2, LOW);
+  digitalWrite(PIN_FREIO, LOW);
+}
+
+void voltarAtraz() {
+  rotateServoA(60);
+  digitalWrite(PIN_IN1, LOW);
+  digitalWrite(PIN_IN2, HIGH);
+  digitalWrite(PIN_FREIO, LOW);
+}
+
+void parar() {
+  rotateServoA(60);
+  digitalWrite(PIN_IN1, LOW);
+  digitalWrite(PIN_IN2, LOW);
+  digitalWrite(PIN_FREIO, HIGH);
+}
+
+void esquerdaFrente(){
+  rotateServoA(130);
+  digitalWrite(PIN_IN1, HIGH);
+  digitalWrite(PIN_IN2, LOW);
+  digitalWrite(PIN_FREIO, LOW);
+}
+
+void direitaFrente(){
+  rotateServoA(0);
+  digitalWrite(PIN_IN1, HIGH);
+  digitalWrite(PIN_IN2, LOW);
+  digitalWrite(PIN_FREIO, LOW);
+}
+
+void esquerdaAtraz(){
+  rotateServoA(130);
+  digitalWrite(PIN_IN1, LOW);
+  digitalWrite(PIN_IN2, HIGH);
+  digitalWrite(PIN_FREIO, LOW);
+}
+
+void direitaAtraz(){
+  rotateServoA(0);
+  digitalWrite(PIN_IN1, LOW);
+  digitalWrite(PIN_IN2, HIGH);
+  digitalWrite(PIN_FREIO, LOW);
+}
+
+void virarEsquerda() {
+  rotateServoA(130);
+}
+
+void virarDireta() {
+  rotateServoA(0);
+}
+
+void virarFrente(){
+  rotateServoA(60);
+}
