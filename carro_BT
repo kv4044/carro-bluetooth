@@ -1,23 +1,24 @@
 #include <SoftwareSerial.h>
 #include <Servo.h>
 
-SoftwareSerial SerialBT(10, 11); // RX, TX
+SoftwareSerial SerialBT(10, 11);  // RX, TX
 Servo servoA;
 
-const int ledEsquerda = 4;  // LED da seta da esquerda (pino 4)
-const int ledDireita = 6;   // LED da seta da direita (pino 6)
+#define LIMITE 20
 
-bool piscandoEsquerda = false; // Controle da seta esquerda
-bool piscandoDireita = false;  // Controle da seta direita
+const int ledEsquerda = 4;  // LED da seta esquerda
+const int ledDireita = 6;   // LED da seta direita
 
-unsigned long ultimaPiscadaEsq = 0; // Tempo da última piscada (esquerda)
-unsigned long ultimaPiscadaDir = 0; // Tempo da última piscada (direita)
+bool piscandoEsquerda = false;
+bool piscandoDireita = false;
 
-const int intervaloPisc = 500; // Intervalo de piscagem (ms)
+unsigned long ultimaPiscadaEsq = 0;
+unsigned long ultimaPiscadaDir = 0;
+const int intervaloPisc = 500;  // 500ms
 
 int PIN_SERVO_A = 9;
-int PIN_IN1 = 3;
-int PIN_IN2 = 5;
+int PIN_RPWM = 3;
+int PIN_LPWM = 5;
 int PIN_FREIO = 7;
 int PIN_FAROL = 12;
 int PIN_ECHO = A0;
@@ -27,114 +28,93 @@ String numericPart = "";
 char codeReceived;
 
 void setup() {
-    Serial.begin(115200);
-    SerialBT.begin(9600);
+  Serial.begin(115200);
+  SerialBT.begin(9600);
 
-    pinMode(PIN_IN1, OUTPUT);
-    pinMode(PIN_IN2, OUTPUT);
-    pinMode(PIN_FAROL, OUTPUT);
-    pinMode(ledEsquerda, OUTPUT);
-    pinMode(ledDireita, OUTPUT);
-    pinMode(PIN_TRIG, OUTPUT);
-    pinMode(PIN_ECHO, INPUT);
-    pinMode(PIN_FREIO, OUTPUT);
+  pinMode(PIN_RPWM, OUTPUT);
+  pinMode(PIN_LPWM, OUTPUT);
+  pinMode(PIN_FAROL, OUTPUT);
+  pinMode(ledEsquerda, OUTPUT);
+  pinMode(ledDireita, OUTPUT);
+  pinMode(PIN_TRIG, OUTPUT);
+  pinMode(PIN_ECHO, INPUT);
+  pinMode(PIN_FREIO, OUTPUT);
 
-    servoA.attach(PIN_SERVO_A);
+  servoA.attach(PIN_SERVO_A);
 }
 
 void loop() {
-    // Comunicação Bluetooth
-    if (Serial.available()) {
-        SerialBT.write(Serial.read());
+  // Comunicação Bluetooth
+  if (Serial.available()) {
+    SerialBT.write(Serial.read());
+  }
+
+  while (SerialBT.available() > 0) {
+    String line = SerialBT.readStringUntil('\n');
+    Serial.println("code received: " + line);
+    numericPart = "";
+    for (int i = 0; i < line.length(); i++) {
+      int character = line[i];
+      if (isDigit(character)) {
+        numericPart += (char)character;
+      } else if (character != '\n') {
+        codeReceived = character;
+      } else {
+        break;
+      }
     }
+  }
 
-    while (SerialBT.available() > 0) {
-        String line = SerialBT.readStringUntil('\n');
-        Serial.println("code received: " + line);
-        numericPart = "";
-        for (int i = 0; i < line.length(); i++) {
-            int character = line[i];
-            if (isDigit(character)) {
-                numericPart += (char) character;
-            } else if (character != '\n') {
-                codeReceived = character;
-            } else {
-                break;
-            }
-        }
+  // Processa comandos recebidos
+  switch (codeReceived) {
+    case 'X':  // Alterna seta esquerda
+      piscandoEsquerda = !piscandoEsquerda;
+      piscandoDireita = false;  // Desliga seta direita se estiver ativada
+      if (!piscandoEsquerda) digitalWrite(ledEsquerda, LOW);
+      break;
+
+    case 'Y':  // Alterna seta direita
+      piscandoDireita = !piscandoDireita;
+      piscandoEsquerda = false;  // Desliga seta esquerda se estiver ativada
+      if (!piscandoDireita) digitalWrite(ledDireita, LOW);
+      break;
+
+    case 'F': irparaFrente(200); break;
+    case 'Q': esquerdaFrente(200); break;
+    case 'L': virarEsquerda(); break;
+    case 'B': voltarAtraz(200); break;
+    case 'Z': esquerdaAtraz(200); break;
+    case 'C': direitaAtraz(200); break;
+    case 'R': virarDireta(); break;
+    case 'E': direitaFrente(200); break;
+    case 'S': parar(); break;
+    case 'M': ligarFarol(); break;
+    case 'm': desligarFarol(); break;
+    case 'J':
+      if (numericPart != "") {
+        rotateServoA(numericPart.toInt());
+      }
+      break;
+  }
+
+  // Controle de piscagem da seta esquerda
+  if (piscandoEsquerda) {
+    if (millis() - ultimaPiscadaEsq >= intervaloPisc) {
+      ultimaPiscadaEsq = millis();
+      digitalWrite(ledEsquerda, !digitalRead(ledEsquerda));  // Alterna estado
     }
+  }
 
-    // Executa a ação correspondente ao comando recebido
-    switch (codeReceived) {
-        case 'F': irparaFrente(); break;
-        case 'Q': esquerdaFrente(); break;
-        case 'L': virarEsquerda(); break;
-        case 'B': voltarAtraz(); break;
-        case 'Z': esquerdaAtraz(); break;
-        case 'C': direitaAtraz(); break;
-        case 'R': virarDireta(); break;
-        case 'E': direitaFrente(); break;
-        case 'S': parar(); break;
-        case 'M': ligarFarol(); break;
-        case 'm': desligarFarol(); break;
-//        case 'N': ligarLed2(); break;
-//        case 'n': desligarLed2(); break;
-        case 'X':
-            piscandoEsquerda = !piscandoEsquerda; // Liga/desliga seta esquerda
-            if (!piscandoEsquerda) digitalWrite(ledEsquerda, LOW); // Apaga quando desliga
-            break;
-        case 'Y':
-            piscandoDireita = !piscandoDireita; // Liga/desliga seta direita
-            if (!piscandoDireita) digitalWrite(ledDireita, LOW); // Apaga quando desliga
-            break;
-        case 'J':
-            if (numericPart != "") {
-                rotateServoA(numericPart.toInt());
-            }
-            break;
+  // Controle de piscagem da seta direita
+  if (piscandoDireita) {
+    if (millis() - ultimaPiscadaDir >= intervaloPisc) {
+      ultimaPiscadaDir = millis();
+      digitalWrite(ledDireita, !digitalRead(ledDireita));  // Alterna estado
     }
-
-    // Controla a piscagem da seta esquerda
-    if (piscandoEsquerda) {
-        unsigned long currentTime = millis();
-        if (currentTime - ultimaPiscadaEsq >= intervaloPisc) {
-            ultimaPiscadaEsq = currentTime;
-            digitalWrite(ledEsquerda, !digitalRead(ledEsquerda)); // Alterna estado
-        }
-    }
-
-    // Controla a piscagem da seta direita
-    if (piscandoDireita) {
-        unsigned long currentTime = millis();
-        if (currentTime - ultimaPiscadaDir >= intervaloPisc) {
-            ultimaPiscadaDir = currentTime;
-            digitalWrite(ledDireita, !digitalRead(ledDireita)); // Alterna estado
-        }
-    }
-
-    // Envia a distância medida pelo sensor ultrassônico
-    SerialBT.print("D");
-    SerialBT.println(measureDistance());
-
-    delay(10);
+  }
 }
 
-// Função para medir distância com sensor ultrassônico
-long measureDistance() {
-    digitalWrite(PIN_TRIG, LOW);
-    delayMicroseconds(5);
-    digitalWrite(PIN_TRIG, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(PIN_TRIG, LOW);
-
-    long duration = pulseIn(PIN_ECHO, HIGH);
-    return microsecondsToCentimeters(duration);
-}
-
-long microsecondsToCentimeters(long microseconds) {
-    return microseconds / 29 / 2;
-}
-
+// Funções auxiliares
 void ligarFarol() {
   digitalWrite(PIN_FAROL, HIGH);
 }
@@ -147,63 +127,63 @@ void rotateServoA(int grados) {
   servoA.write(grados);
 }
 
-void irparaFrente() {
+void irparaFrente(int velocidade) {
   rotateServoA(60);
-  digitalWrite(PIN_IN1, HIGH);
-  digitalWrite(PIN_IN2, LOW);
+  analogWrite(PIN_RPWM, velocidade);
+  analogWrite(PIN_LPWM, 0);
   digitalWrite(PIN_FREIO, LOW);
 }
 
-void voltarAtraz() {
+void voltarAtraz(int velocidade) {
   rotateServoA(60);
-  digitalWrite(PIN_IN1, LOW);
-  digitalWrite(PIN_IN2, HIGH);
+  analogWrite(PIN_RPWM, 0);
+  analogWrite(PIN_LPWM, velocidade);
   digitalWrite(PIN_FREIO, LOW);
 }
 
 void parar() {
   rotateServoA(60);
-  digitalWrite(PIN_IN1, LOW);
-  digitalWrite(PIN_IN2, LOW);
+  analogWrite(PIN_RPWM, 0);
+  analogWrite(PIN_LPWM, 0);
   digitalWrite(PIN_FREIO, HIGH);
 }
 
-void esquerdaFrente(){
-  rotateServoA(130);
-  digitalWrite(PIN_IN1, HIGH);
-  digitalWrite(PIN_IN2, LOW);
+void esquerdaFrente(int velocidade) {
+  rotateServoA(80);
+  analogWrite(PIN_RPWM, velocidade);
+  analogWrite(PIN_LPWM, 0);
   digitalWrite(PIN_FREIO, LOW);
 }
 
-void direitaFrente(){
-  rotateServoA(0);
-  digitalWrite(PIN_IN1, HIGH);
-  digitalWrite(PIN_IN2, LOW);
+void direitaFrente(int velocidade) {
+  rotateServoA(20);
+  analogWrite(PIN_RPWM, velocidade);
+  analogWrite(PIN_LPWM, 0);
   digitalWrite(PIN_FREIO, LOW);
 }
 
-void esquerdaAtraz(){
-  rotateServoA(130);
-  digitalWrite(PIN_IN1, LOW);
-  digitalWrite(PIN_IN2, HIGH);
+void esquerdaAtraz(int velocidade) {
+  rotateServoA(80);
+  analogWrite(PIN_RPWM, 0);
+  analogWrite(PIN_LPWM, velocidade);
   digitalWrite(PIN_FREIO, LOW);
 }
 
-void direitaAtraz(){
-  rotateServoA(0);
-  digitalWrite(PIN_IN1, LOW);
-  digitalWrite(PIN_IN2, HIGH);
+void direitaAtraz(int velocidade) {
+  rotateServoA(20);
+  analogWrite(PIN_RPWM, 0);
+  analogWrite(PIN_LPWM, velocidade);
   digitalWrite(PIN_FREIO, LOW);
 }
 
 void virarEsquerda() {
-  rotateServoA(130);
+  rotateServoA(80);
 }
 
 void virarDireta() {
-  rotateServoA(0);
+  rotateServoA(20);
 }
 
-void virarFrente(){
+void virarFrente() {
   rotateServoA(60);
 }
