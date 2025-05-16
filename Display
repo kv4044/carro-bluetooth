@@ -1,0 +1,33 @@
+// PINOS
+// SDA: A4
+// SCL:A5
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// DEFINIÇÕES
+#define endereco  0x27 // Endereços comuns: 0x27, 0x3F
+#define colunas   16
+#define linhas    2
+
+// INSTANCIANDO OBJETOS
+LiquidCrystal_I2C lcd(endereco, colunas, linhas);
+
+void setup() {
+  lcd.init(); // INICIA A COMUNICAÇÃO COM O DISPLAY
+  lcd.backlight(); // LIGA A ILUMINAÇÃO DO DISPLAY
+  lcd.clear(); // LIMPA O DISPLAY
+
+  delay(2000);
+  lcd.print("Mecatronica automovel");
+  delay(1000); // DELAY DE 5 SEGUNDOS
+  lcd.setCursor(0, 1); // POSICIONA O CURSOR NA PRIMEIRA COLUNA DA LINHA 2
+  lcd.print("Kaiky V. Bego Ferreira");
+  delay(3000); // DELAY DE 5 SEGUNDOS
+
+}
+
+void loop() {
+
+  lcd.scrollDisplayLeft();
+  delay(700);
+}
